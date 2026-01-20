@@ -21,6 +21,14 @@ from odf.style import Style, TextProperties, ParagraphProperties
 import polars as pl
 import re
 
+from concurrent.futures import ThreadPoolExecutor
+from multiprocessing import Pool
+
+from tqdm import tqdm
+from concurrent.futures import as_completed
+
+
+
 
 def creer_pdf(texte: str, nom_fichier: str):
     """
@@ -191,12 +199,6 @@ def inference(client, new_technologies):
         ],
     )
     return response.choices[0].message.content
-
-from concurrent.futures import ThreadPoolExecutor
-from multiprocessing import Pool
-
-from tqdm import tqdm
-from concurrent.futures import as_completed
 
 
 with ThreadPoolExecutor(max_workers=min(50, NUM_DOCUMENTS)) as executor:
