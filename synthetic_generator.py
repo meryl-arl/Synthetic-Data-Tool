@@ -1,6 +1,8 @@
-NUM_DOCUMENTS = 1000
-random_techrandom_tech = ["AI","Telsa","blockchain","robotique","impression 3D","cybersÃ©curitÃ©","espace","Ã©nergie durable","agriculture","Ã©ducation","communication","recherche scientifique","audio","juridique","marketing","ressources humaines","service client","bases de donnÃ©es"] 
-PROMPT = f"CrÃ©e un texte de plusieurs paragraphe sur le thÃ¨me de la technologie et de l'innovation en 2024, parle de ce sujet spÃ©cifique : {random.choice(random_techrandom_tech)}
+"""
+Génerateur de pdf et odt avec l'ia, il genere automatiquement des 
+articles grace aux llm
+"""
+
 
 import random
 from reportlab.lib.pagesizes import A4
@@ -27,14 +29,21 @@ from multiprocessing import Pool
 from tqdm import tqdm
 from concurrent.futures import as_completed
 
+#configuration 
+
+NUM_DOCUMENTS = 1000
+random_techrandom_tech = ["AI","Telsa","blockchain","robotique","impression 3D", "cybersécurité","espace","énergie durable","agriculture","éducation","communication","recherche scientifique","audio","juridique","marketing","ressources humaines","service client","bases de données"] 
+PROMPT = f"Crée un texte de plusieurs paragraphe sur le thème de la technologie et de l'innovation en 2024, parle de ce sujet spécifique : {random.choice(random_techrandom_tech)}
 
 
-
+# fonction de création de documents
 def creer_pdf(texte: str, nom_fichier: str):
     """
-    CrÃ©e un fichier PDF Ã  partir d'une string.
-    GÃ¨re les titres (###, ##, #) et les paragraphes.
+    Crée un fichier PDF à partir d'un texte en Markdown.
+     Gère les titres (###, ##, #) et les paragraphes.
     """
+
+    #configuration du doc
     doc = SimpleDocTemplate(
         nom_fichier,
         pagesize=A4,
@@ -85,6 +94,7 @@ def creer_pdf(texte: str, nom_fichier: str):
     # Nettoyer et parser le texte
     lignes = texte.strip().split('\n')
     
+    # conversion text en pdf
     for ligne in lignes:
         ligne = ligne.strip()
         if not ligne:
@@ -94,7 +104,7 @@ def creer_pdf(texte: str, nom_fichier: str):
         # Nettoyer le markdown bold *texte*
         ligne_clean = re.sub(r'\\(.+?)\\', r'<b>\1</b>', ligne)
         
-        # DÃ©tecter les niveaux de titre
+        # Détecter les niveaux de titre
         if ligne.startswith('### '):
             titre = ligne_clean.replace('### ', '')
             elements.append(Paragraph(titre, style_h3))
@@ -108,18 +118,19 @@ def creer_pdf(texte: str, nom_fichier: str):
             # Paragraphe normal
             elements.append(Paragraph(ligne_clean, style_normal))
     
+    #generation du pdf
     doc.build(elements)
     print(f"PDF crÃ©Ã©: {nom_fichier}")
 
 
 def creer_odt(texte: str, nom_fichier: str):
     """
-    CrÃ©e un fichier ODT Ã  partir d'une string.
-    GÃ¨re les titres (###, ##, #) et les paragraphes.
+    Crée un fichier ODT à partir d'une string.
+    Gère les titres (###, ##, #) et les paragraphes.
     """
     doc = OpenDocumentText()
     
-    # CrÃ©er les styles
+    # Créer les styles
     # Style titre principal
     style_h1 = Style(name="Titre1", family="paragraph")
     style_h1.addElement(TextProperties(fontsize="18pt", fontweight="bold"))
@@ -156,7 +167,7 @@ def creer_odt(texte: str, nom_fichier: str):
         # Nettoyer le markdown bold
         ligne_clean = re.sub(r'\\(.+?)\\', r'\1', ligne)
         
-        # DÃ©tecter les niveaux de titre
+        # Détecter les niveaux de titre
         if ligne.startswith('### '):
             titre = ligne_clean.replace('### ', '')
             p = P(stylename=style_h3, text=titre)
