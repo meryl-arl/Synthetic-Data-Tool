@@ -16,12 +16,17 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.units import cm
 from reportlab.lib.enums import TA_JUSTIFY
+from deepinfra_client import make_deepinfra_client
 
 from odf.opendocument import OpenDocumentText
 from odf.text import P, H
 from odf.style import Style, TextProperties, ParagraphProperties
 import polars as pl
 import re
+
+import os
+from dotenv import load_dotenv
+
 
 from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import Pool
@@ -33,7 +38,7 @@ from concurrent.futures import as_completed
 
 NUM_DOCUMENTS = 1000
 random_techrandom_tech = ["AI","Telsa","blockchain","robotique","impression 3D", "cybersécurité","espace","énergie durable","agriculture","éducation","communication","recherche scientifique","audio","juridique","marketing","ressources humaines","service client","bases de données"] 
-PROMPT = f"Crée un texte de plusieurs paragraphe sur le thème de la technologie et de l'innovation en 2024, parle de ce sujet spécifique : {random.choice(random_techrandom_tech)}
+PROMPT = f"Crée un texte de plusieurs paragraphe sur le thème de la technologie et de l'innovation en 2024, parle de ce sujet spécifique : {random.choice(random_techrandom_tech)}"
 
 
 # fonction de création de documents
@@ -188,11 +193,11 @@ def creer_odt(texte: str, nom_fichier: str):
     print(f"ODT crÃ©Ã©: {nom_fichier}")
 
 
-client = OpenAI(api_key="7jIPsm1yv398SZpzLaE0qw2DIs2Y5CZG",base_url="https://api.deepinfra.com/v1/openai")
+client = make_deepinfra_client()
 
 data = pl.DataFrame(schema={"content": pl.Utf8})
 
-def write_files(args):
+def write_files(cargs):
     texte_llm, index = args
     creer_pdf(texte_llm, f"output_pdf/article_{index}.pdf")
     creer_odt(texte_llm, f"output_odt/article_{index}.odt")
