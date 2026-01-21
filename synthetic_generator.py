@@ -36,9 +36,9 @@ from concurrent.futures import as_completed
 
 #configuration 
 
-NUM_DOCUMENTS = 1000
-random_techrandom_tech = ["AI","Telsa","blockchain","robotique","impression 3D", "cybersécurité","espace","énergie durable","agriculture","éducation","communication","recherche scientifique","audio","juridique","marketing","ressources humaines","service client","bases de données"] 
-PROMPT = f"Crée un texte de plusieurs paragraphe sur le thème de la technologie et de l'innovation en 2024, parle de ce sujet spécifique : {random.choice(random_techrandom_tech)}"
+NUM_DOCUMENTS = 1 #a modifier pcq de base ct 1000
+random_tech = ["AI","Telsa","blockchain","robotique","impression 3D", "cybersécurité","espace","énergie durable","agriculture","éducation","communication","recherche scientifique","audio","juridique","marketing","ressources humaines","service client","bases de données"] 
+PROMPT = f"Crée un texte de plusieurs paragraphe sur le thème de la technologie et de l'innovation en 2024, parle de ce sujet spécifique : {random.choice(random_tech)}"
 
 
 # fonction de création de documents
@@ -107,8 +107,8 @@ def creer_pdf(texte: str, nom_fichier: str):
             continue
         
         # Nettoyer le markdown bold *texte*
-        ligne_clean = re.sub(r'\\(.+?)\\', r'<b>\1</b>', ligne)
-        
+       ligne_clean = re.sub(r'\\(.+?)\\', r'<b>\1</b>', ligne)
+       
         # Détecter les niveaux de titre
         if ligne.startswith('### '):
             titre = ligne_clean.replace('### ', '')
@@ -170,8 +170,8 @@ def creer_odt(texte: str, nom_fichier: str):
             continue
         
         # Nettoyer le markdown bold
-        ligne_clean = re.sub(r'\\(.+?)\\', r'\1', ligne)
-        
+        ligne_clean = re.sub(r'\\(.+?)\\', r'<b>\1</b>', ligne)
+
         # Détecter les niveaux de titre
         if ligne.startswith('### '):
             titre = ligne_clean.replace('### ', '')
@@ -197,7 +197,7 @@ client = make_deepinfra_client()
 
 data = pl.DataFrame(schema={"content": pl.Utf8})
 
-def write_files(cargs):
+def write_files(args):
     texte_llm, index = args
     creer_pdf(texte_llm, f"output_pdf/article_{index}.pdf")
     creer_odt(texte_llm, f"output_odt/article_{index}.odt")
@@ -218,7 +218,7 @@ def inference(client, new_technologies):
 
 
 with ThreadPoolExecutor(max_workers=min(50, NUM_DOCUMENTS)) as executor:
-    futures = [executor.submit(inference, client, TECHNOLOGIES_LIST) for _ in range(NUM_DOCUMENTS)]
+    futures = [executor.submit(inference, client, random_tech) for _ in range(NUM_DOCUMENTS)]
     results = []
     for f in tqdm(as_completed(futures), total=NUM_DOCUMENTS, desc="InfÃ©rences"):
         results.append(f.result())
