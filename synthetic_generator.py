@@ -37,10 +37,12 @@ random_techrandom_tech = [
     "service client", "bases de données"
 ]
 
+# TODO: change prompt
 PROMPT = (
     "Crée un texte de plusieurs paragraphes sur le thème de la technologie "
     "et de l'innovation en 2024, parle de ce sujet spécifique : "
-    f"{random.choice(random_techrandom_tech)}"
+    f"{random.choice(random_techrandom_tech)}"  #GROSSE KARBA CHANGE MOI CA TOUT DE SUITE ET PLSU VITE QUE CA 
+    #OUBLIE PAS MV STP REINE 
 )
 
 
