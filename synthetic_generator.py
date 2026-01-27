@@ -173,3 +173,6 @@ with ThreadPoolExecutor(max_workers=min(NUM_DOCUMENTS, 50)) as executor:
 
 for i in range(len(results)):
     write_files((results[i], i))
+
+    ##date , un csv aussi , chiffren entier , lui donner une liste (decrire la donnee de sortie )
+
