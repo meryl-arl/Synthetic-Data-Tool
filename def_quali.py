@@ -1,14 +1,10 @@
-"""
-Générateur de pdf et odt avec l'ia
-Il génère automatiquement des articles grâce aux llm
-"""
 
 import random
 import re
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import polars as pl
+import polars as plle 
 from tqdm import tqdm
 
 from reportlab.lib.pagesizes import A4
@@ -24,31 +20,6 @@ from odf.style import Style, TextProperties, ParagraphProperties
 from deepinfra_client import make_deepinfra_client
 
 
-# --------------------
-# CONFIGURATION 
-# --------------------
-NUM_DOCUMENTS = 1
-
-random_techrandom_tech = [
-    "AI", "Tesla", "blockchain", "robotique", "impression 3D",
-    "cybersécurité", "espace", "énergie durable", "agriculture",
-    "éducation", "communication", "recherche scientifique",
-    "audio", "juridique", "marketing", "ressources humaines",
-    "service client", "bases de données"
-]
-
-# TODO: change prompt
-PROMPT = (
-    "Crée un texte de plusieurs paragraphes sur le thème de la technologie "
-    "et de l'innovation en 2024, parle de ce sujet spécifique : "
-    f"{random.choice(random_techrandom_tech)}"  #GROSSE KARBA CHANGE MOI CA TOUT DE SUITE ET PLSU VITE QUE CA 
-    #OUBLIE PAS MV STP REINE 
-)
-
-
-# --------------------
-# FONCTIONS DE CRÉATION
-# --------------------
 def creer_pdf(texte: str, nom_fichier: str):
     doc = SimpleDocTemplate(
         nom_fichier,
@@ -122,27 +93,23 @@ def creer_odt(texte: str, nom_fichier: str):
     print(f"ODT créé: {nom_fichier}")
 
 
-# --------------------
-# LLM 
-# --------------------
-client = make_deepinfra_client()
-data = pl.DataFrame(schema={"content": pl.Utf8})
-
 
 def write_files(args):
+    client = make_deepinfra_client()
     texte_llm, index = args
-    creer_pdf(texte_llm, f"output_pdf/article_{index}.pdf")
-    creer_odt(texte_llm, f"output_odt/article_{index}.odt")
+    nom_pdf = f"output_pdf/article_{index+1}.pdf"
+    nom_odt = f"output_odt/article_{index+1}.odt"
+    
+    creer_pdf(texte_llm, nom_pdf)
+    creer_odt(texte_llm, nom_odt)
+    
     return index
 
-
-def inference(client, new_technologies):
-   
-    tech = random.choice(new_technologies)
+def inference(client, sujet):
     prompt = (
         "Crée un texte de plusieurs paragraphes sur le thème de la technologie "
         "et de l'innovation en 2024, parle de ce sujet spécifique : "
-        f"{tech}"
+        f"{sujet}"
     )
 
     response = client.chat.completions.create(
@@ -154,25 +121,4 @@ def inference(client, new_technologies):
 
     return response.choices[0].message.content
 
-
-# --------------------
-# EXÉCUTION
-# --------------------
-os.makedirs("output_pdf", exist_ok=True)
-os.makedirs("output_odt", exist_ok=True)
-
-
-with ThreadPoolExecutor(max_workers=min(NUM_DOCUMENTS, 50)) as executor:
-    futures = [executor.submit(inference, client, random_techrandom_tech) for _ in range(NUM_DOCUMENTS)]
-    results = []
-
-    for f in tqdm(as_completed(futures), total=NUM_DOCUMENTS, desc="Inférences"):
-        txt = f.result()
-        results.append(txt)
-
-
-for i in range(len(results)):
-    write_files((results[i], i))
-
-    ##date , un csv aussi , chiffren entier , lui donner une liste (decrire la donnee de sortie )
 

@@ -1,0 +1,378 @@
+import json
+import re
+import os
+import numpy as np
+import pandas as pd
+
+from deepinfra_client import make_deepinfra_client
+
+from odf.opendocument import OpenDocumentText
+from odf.text import P
+from odf.style import Style, TextProperties, ParagraphProperties, TableCellProperties, TableRowProperties
+from odf.table import Table as ODTTable, TableRow, TableCell
+
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import cm
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_JUSTIFY
+from reportlab.lib import colors
+
+
+def to_safe_name(s: str) -> str:
+    s = s.strip().lower()
+    s = re.sub(r"[^a-z0-9]+", "_", s)
+    s = re.sub(r"_+", "_", s).strip("_")
+    return s
+
+def format_column_title(s: str) -> str:
+    s = s.strip()
+    s = s.replace("_", " ")
+    return s.capitalize()
+
+def saisir_colonnes() -> list[str]:
+    colonnes = []
+    seen = set()
+
+    print("Entre les colonnes une par une (entrée vide = terminé).")
+
+    while True:
+        col_raw = input(">  ").strip()
+        if col_raw == "":
+            break
+
+        col = to_safe_name(col_raw)
+        if not col:
+            print("  (nom invalide, réessaiez)")
+            continue
+
+        if col in seen:
+            print(f"  (déjà ajouté: {col})")
+            continue
+
+        colonnes.append(col)
+        seen.add(col)
+
+    return colonnes
+
+def extract_json(text: str) -> str:
+    if text is None:
+        return ""
+
+    t = text.strip()
+    t = re.sub(r"^\s*```(?:json)?\s*", "", t)
+    t = re.sub(r"\s*```$", "", t)
+
+    m = re.search(r"\{.*\}", t, flags=re.DOTALL)
+    return m.group(0) if m else t
+
+def call_llm(prompt: str) -> str:
+    client = make_deepinfra_client()
+    resp = client.chat.completions.create(
+        model="mistralai/Mistral-Small-3.2-24B-Instruct-2506",
+        temperature=0.2,
+        frequency_penalty=0.2,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return resp.choices[0].message.content
+
+def generer_prompt_llm(theme: str, colonnes: list[str], nb_lignes: int) -> str:
+    spec = {"theme": theme, "colonnes": colonnes, "nb_lignes": nb_lignes}
+
+    return f"""
+Tu es un expert senior en modélisation statistique et génération de données synthétiques.
+
+Objectif :
+À partir des spécifications suivantes, propose un schéma statistique réaliste pour générer un dataset synthétique.
+
+Spécifications :
+- Thème : {spec['theme']}
+- Colonnes : {spec['colonnes']}
+- Nombre de lignes : {spec['nb_lignes']}
+
+Contraintes de sortie :
+1. Réponds UNIQUEMENT en JSON valide.
+2. AUCUN texte explicatif, AUCUN markdown, AUCUN commentaire.
+3. Le JSON doit être directement parsable par Python (json.loads).
+4. Utilise uniquement les types et distributions autorisés.
+5. Si tu ne peux pas produire une réponse conforme ou si l’information est insuffisante, renvoie strictement: null
+
+Schéma attendu :
+{{
+  "columns": {{
+    "<nom_colonne>": {{
+      "type": "integer|float|boolean|string|category",
+      "distribution": "normal|lognormal|uniform|poisson|none",
+      "params": {{
+        "mean": float,
+        "std": float,
+        "min": float,
+        "max": float,
+        "lambda": float
+      }},
+      "categories": ["A", "B", "C"],
+      "probas": [0.5, 0.3, 0.2]
+    }}
+  }},
+  "row_rules": [
+    {{
+      "if": "<condition logique en pseudo-code>",
+      "then": "<contrainte sur les colonnes>"
+    }}
+  ]
+}}
+
+Règles :
+- Toutes les colonnes listées doivent apparaître dans "columns".
+- Si type != "category", laisse "categories" et "probas" vides.
+- Si distribution = "none", laisse "params" vide.
+- Les probas doivent sommer à 1.
+- Les règles doivent être réalistes et cohérentes avec le thème.
+""".strip()
+
+def parse_llm_spec(raw: str) -> dict | None:
+    """
+    Retourne dict si OK, sinon None.
+    Accepte "null" renvoyé par le modèle.
+    """
+    cleaned = extract_json(raw).strip()
+    if cleaned in ("null", ""):
+        return None
+
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        # tentative: enlever trailing commas très fréquentes
+        cleaned2 = re.sub(r",\s*([}\]])", r"\1", cleaned)
+        try:
+            return json.loads(cleaned2)
+        except json.JSONDecodeError:
+            return None
+
+def generate_dataframe(spec_llm: dict, nb_lignes: int, seed: int = 42) -> pd.DataFrame:
+    data = {}
+    np.random.seed(seed)
+
+    columns = spec_llm.get("columns", {})
+    for col_name, col_spec in columns.items():
+        dist = col_spec.get("distribution", "none")
+        params = col_spec.get("params", {}) or {}
+        col_type = col_spec.get("type")
+
+        match dist:
+            case "normal":
+                mean = params.get("mean", 0)
+                std = params.get("std", params.get("stddev", 1))
+                arr = np.random.normal(loc=mean, scale=std, size=nb_lignes)
+
+            case "lognormal":
+                mu = params.get("mu", 0)
+                sigma = params.get("sigma", 1)
+                arr = np.random.lognormal(mean=mu, sigma=sigma, size=nb_lignes)
+
+            case "uniform":
+                low = params.get("low", params.get("min", 0))
+                high = params.get("high", params.get("max", 1))
+                arr = np.random.uniform(low=low, high=high, size=nb_lignes)
+
+            case "poisson":
+                lam = params.get("lambda", 1)
+                arr = np.random.poisson(lam=lam, size=nb_lignes)
+
+            case _:
+                if col_type == "category":
+                    cats = col_spec.get("categories", [])
+                    p = col_spec.get("probas", None)
+                    if cats:
+                        arr = np.random.choice(cats, size=nb_lignes, p=p)
+                    else:
+                        arr = np.array([""] * nb_lignes, dtype=object)
+
+                elif col_type == "boolean" and col_spec.get("probas"):
+                    arr = np.random.choice([True, False], size=nb_lignes, p=col_spec["probas"])
+
+                elif col_type == "boolean":
+                    arr = np.random.choice([True, False], size=nb_lignes)
+
+                elif col_type in ("integer", "float"):
+                    # fallback simple si le modèle a mis none + type num
+                    arr = np.random.uniform(0, 1, size=nb_lignes)
+
+                else:
+                    arr = np.array([""] * nb_lignes, dtype=object)
+
+        if arr.dtype in [np.float64, np.float32]:
+            arr = np.round(arr, 2)
+
+        data[col_name] = arr
+
+    return pd.DataFrame(data)
+
+def creer_dossiers_sortie(pdf_dir: str = "output_pdf", odt_dir: str = "output_odt") -> tuple[str, str]:
+    os.makedirs(pdf_dir, exist_ok=True)
+    os.makedirs(odt_dir, exist_ok=True)
+    return pdf_dir, odt_dir
+
+def creer_pdf_table(df: pd.DataFrame, nom_fichier: str, titre: str | None = None, max_rows: int = 50):
+    doc = SimpleDocTemplate(
+        nom_fichier,
+        pagesize=A4,
+        rightMargin=2 * cm,
+        leftMargin=2 * cm,
+        topMargin=2 * cm,
+        bottomMargin=2 * cm,
+    )
+
+    styles = getSampleStyleSheet()
+    style_titre = ParagraphStyle("Titre", parent=styles["Heading1"], fontSize=18)
+    style_normal = ParagraphStyle("Normal", parent=styles["Normal"], fontSize=11, alignment=TA_JUSTIFY)
+
+    elements = []
+
+    if titre:
+        elements.append(Paragraph(format_column_title(titre), style_titre))
+        elements.append(Spacer(1, 0.4 * cm))
+
+    elements.append(Paragraph(f"Taille: {df.shape[0]} lignes × {df.shape[1]} colonnes", style_normal))
+    elements.append(Spacer(1, 0.4 * cm))
+
+    df_view = df.head(max_rows).copy()
+    header = [format_column_title(col) for col in df_view.columns]
+
+    rows = []
+    for _, row in df_view.iterrows():
+        formatted_row = []
+        for val in row:
+            if isinstance(val, (float, np.floating)):
+                formatted_row.append(f"{val:.1f}")
+            else:
+                formatted_row.append(str(val))
+        rows.append(formatted_row)
+
+    data_table = [header] + rows
+
+    page_width = A4[0] - doc.leftMargin - doc.rightMargin
+    ncols = max(len(header), 1)
+    col_width = page_width / ncols
+    col_widths = [col_width] * ncols
+
+    table = Table(data_table, colWidths=col_widths, repeatRows=1)
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("GRID", (0, 0), (-1, -1), 0.3, colors.grey),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.whitesmoke, colors.lightgrey]),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
+
+    elements.append(table)
+
+    if df.shape[0] > max_rows:
+        elements.append(Spacer(1, 0.4 * cm))
+        elements.append(Paragraph(f"(Aperçu limité aux {max_rows} premières lignes.)", style_normal))
+
+    doc.build(elements)
+    print(f"PDF créé: {nom_fichier}")
+
+def creer_odt_table(
+    df: pd.DataFrame,
+    nom_fichier: str,
+    titre: str | None = None,
+    max_rows: int = 200,
+    zebra: bool = True,
+):
+    doc = OpenDocumentText()
+
+    style_h1 = Style(name="Titre1", family="paragraph")
+    style_h1.addElement(TextProperties(fontsize="18pt", fontweight="bold"))
+    style_h1.addElement(ParagraphProperties(marginbottom="0.3cm"))
+    doc.styles.addElement(style_h1)
+
+    style_meta = Style(name="Meta", family="paragraph")
+    style_meta.addElement(TextProperties(fontsize="11pt", color="#444444"))
+    style_meta.addElement(ParagraphProperties(marginbottom="0.4cm"))
+    doc.styles.addElement(style_meta)
+
+    base_cell = Style(name="CellBase", family="table-cell")
+    base_cell.addElement(TableCellProperties(border="0.03cm solid #999999", padding="0.12cm"))
+    doc.styles.addElement(base_cell)
+
+    header_cell = Style(name="CellHeader", family="table-cell", parentstylename=base_cell)
+    header_cell.addElement(
+        TableCellProperties(backgroundcolor="#E6E6E6", border="0.03cm solid #666666", padding="0.14cm")
+    )
+    doc.styles.addElement(header_cell)
+
+    zebra_cell = Style(name="CellZebra", family="table-cell", parentstylename=base_cell)
+    zebra_cell.addElement(
+        TableCellProperties(backgroundcolor="#F5F5F5", border="0.03cm solid #999999", padding="0.12cm")
+    )
+    doc.styles.addElement(zebra_cell)
+
+    p_cell = Style(name="PCell", family="paragraph")
+    p_cell.addElement(TextProperties(fontsize="10.5pt"))
+    doc.styles.addElement(p_cell)
+
+    p_header = Style(name="PHeader", family="paragraph")
+    p_header.addElement(TextProperties(fontsize="10.5pt", fontweight="bold"))
+    doc.styles.addElement(p_header)
+
+    row_style = Style(name="RowComfort", family="table-row")
+    row_style.addElement(TableRowProperties(minrowheight="0.55cm"))
+    doc.styles.addElement(row_style)
+
+    if titre:
+        doc.text.addElement(P(stylename=style_h1, text=format_column_title(titre)))
+
+    doc.text.addElement(P(stylename=style_meta, text=f"Taille: {df.shape[0]} lignes × {df.shape[1]} colonnes"))
+
+    df_view = df.head(max_rows).copy()
+    table = ODTTable(name="Tableau")
+
+    tr_h = TableRow(stylename=row_style)
+    for col in df_view.columns:
+        tc = TableCell(stylename=header_cell)
+        tc.addElement(P(stylename=p_header, text=format_column_title(col)))
+        tr_h.addElement(tc)
+    table.addElement(tr_h)
+
+    for i, (_, row) in enumerate(df_view.iterrows()):
+        tr = TableRow(stylename=row_style)
+        use_zebra = zebra and (i % 2 == 1)
+        cell_style = zebra_cell if use_zebra else base_cell
+
+        for val in row.tolist():
+            tc = TableCell(stylename=cell_style)
+            val_str = f"{val:.1f}" if isinstance(val, (float, np.floating)) else str(val)
+            tc.addElement(P(stylename=p_cell, text=val_str))
+            tr.addElement(tc)
+
+        table.addElement(tr)
+
+    doc.text.addElement(table)
+
+    if df.shape[0] > max_rows:
+        doc.text.addElement(P(stylename=style_meta, text=f"(Aperçu limité aux {max_rows} premières lignes.)"))
+
+    doc.save(nom_fichier)
+    print(f"ODT créé : {nom_fichier}")
+
+def write_files_df(df: pd.DataFrame, index: int, theme: str, pdf_dir="output_pdf", odt_dir="output_odt"):
+    """
+    Version correcte: pas de variable globale, pas d'écrasement.
+    """
+    pdf_path = os.path.join(pdf_dir, f"table_{index}.pdf")
+    odt_path = os.path.join(odt_dir, f"table_{index}.odt")
+
+    creer_pdf_table(df, pdf_path, titre=f"{theme} — Table {index}", max_rows=50)
+    creer_odt_table(df, odt_path, titre=f"{theme} — Table {index}", max_rows=200, zebra=True)
+    return index
