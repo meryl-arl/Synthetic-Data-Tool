@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 import json
 import re
 import os
 import numpy as np
 import pandas as pd
 
-from deepinfra_client import make_deepinfra_client
+from .deepinfra_client import make_deepinfra_client
 
 from odf.opendocument import OpenDocumentText
 from odf.text import P
@@ -69,9 +71,11 @@ def extract_json(text: str) -> str:
 def call_llm(prompt: str) -> str:
     client = make_deepinfra_client()
     resp = client.chat.completions.create(
-        model="mistralai/Mistral-Small-3.2-24B-Instruct-2506",
+        model="anthropic/claude-3-7-sonnet-latest",
+        # model="mistralai/Mistral-Small-3.2-24B-Instruct-2506",
         temperature=0.2,
-        frequency_penalty=0.2,
+        frequency_penalty=0.8,
+        max_tokens=4096,
         messages=[{"role": "user", "content": prompt}],
     )
     return resp.choices[0].message.content
@@ -129,6 +133,8 @@ Règles :
 - Les probas doivent sommer à 1.
 - Les règles doivent être réalistes et cohérentes avec le thème.
 """.strip()
+
+#TODO CHECK DU DATE TIME . ET ASK CLAUDE 
 
 def parse_llm_spec(raw: str) -> dict | None:
     """
@@ -208,10 +214,11 @@ def generate_dataframe(spec_llm: dict, nb_lignes: int, seed: int = 42) -> pd.Dat
 
     return pd.DataFrame(data)
 
-def creer_dossiers_sortie(pdf_dir: str = "output_pdf", odt_dir: str = "output_odt") -> tuple[str, str]:
+def creer_dossiers_sortie(pdf_dir: str = "output_pdf", odt_dir: str = "output_odt", csv_dir: str = "output_csv") -> tuple[str, str]:
     os.makedirs(pdf_dir, exist_ok=True)
     os.makedirs(odt_dir, exist_ok=True)
-    return pdf_dir, odt_dir
+    os.makedirs(csv_dir, exist_ok=  True)
+    return pdf_dir, odt_dir, csv_dir
 
 def creer_pdf_table(df: pd.DataFrame, nom_fichier: str, titre: str | None = None, max_rows: int = 50):
     doc = SimpleDocTemplate(
@@ -366,6 +373,44 @@ def creer_odt_table(
     doc.save(nom_fichier)
     print(f"ODT créé : {nom_fichier}")
 
+def creer_csv_table(
+    df: pd.DataFrame,
+    nom_fichier: str,
+    titre: str | None = None,
+    max_rows: int | None = None,
+    sep: str = ";",
+    decimal: str = ",",
+    encoding: str = "utf-8-sig", 
+    index: bool = False,
+    float_format: str = "%.1f",
+) -> None:
+    dossier = os.path.dirname(nom_fichier)
+    if dossier:
+        os.makedirs(dossier, exist_ok=True)
+
+    df_view = df.head(max_rows).copy() if (max_rows is not None) else df.copy()
+
+    # Écriture en une seule fois
+    with open(nom_fichier, "w", encoding=encoding, newline="") as f:
+        if titre:
+            f.write(f"# {titre}\n")
+            f.write(f"# Taille: {df.shape[0]} lignes × {df.shape[1]} colonnes\n")
+            if max_rows is not None and df.shape[0] > max_rows:
+                f.write(f"# (Aperçu limité aux {max_rows} premières lignes.)\n")
+        
+        # Écriture directe dans le même fichier
+        df_view.to_csv(
+            f,
+            header=True,
+            index=index,
+            sep=sep,
+            decimal=decimal,
+            lineterminator="\n",
+            float_format=float_format,
+        )
+
+    print(f"CSV créé : {nom_fichier}")
+
 def write_files_df(df: pd.DataFrame, index: int, theme: str, pdf_dir="output_pdf", odt_dir="output_odt"):
     """
     Version correcte: pas de variable globale, pas d'écrasement.
@@ -376,3 +421,32 @@ def write_files_df(df: pd.DataFrame, index: int, theme: str, pdf_dir="output_pdf
     creer_pdf_table(df, pdf_path, titre=f"{theme} — Table {index}", max_rows=50)
     creer_odt_table(df, odt_path, titre=f"{theme} — Table {index}", max_rows=200, zebra=True)
     return index
+
+def choisir_formats() -> dict[str, bool]:
+    """
+    Demande à l'utilisateur quels formats il souhaite générer.
+    Retourne un dict avec les clés 'pdf', 'odt', 'csv' et valeurs True/False.
+    """
+    print("\n=== Choix des formats de sortie ===")
+    print("Quels formats voulez-vous générer ?")
+    print("(Répondez par 'o' pour oui, 'n' pour non, ou appuyez sur Entrée pour tout générer)")
+    
+    # Demander pour chaque format
+    formats = {}
+    
+    reponse_pdf = input("  PDF ? [o/N] : ").strip().lower()
+    formats['pdf'] = reponse_pdf == 'o'
+    
+    reponse_odt = input("  ODT ? [o/N] : ").strip().lower()
+    formats['odt'] = reponse_odt == 'o'
+    
+    reponse_csv = input("  CSV ? [o/N] : ").strip().lower()
+    formats['csv'] = reponse_csv == 'o'
+    
+    # Si aucun format n'est choisi, générer tout par défaut
+    if not any(formats.values()):
+        print("\nAucun format sélectionné. Génération de tous les formats par défaut.")
+        formats = {'pdf': True, 'odt': True, 'csv': True}
+    
+    return formats
+
