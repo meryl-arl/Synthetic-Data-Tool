@@ -1,9 +1,5 @@
 # cli.py
 # Interface CLI (menu) qui orchestre : textuel / quanti / hybride
-# Dépendance : click
-# Usage :
-#   python cli.py
-# ou (optionnel) :
 #   python cli.py menu
 #   python cli.py quali
 #   python cli.py text
@@ -14,8 +10,8 @@ import json
 import click
 
 
-from fonctions.deepinfra_client import make_deepinfra_client
-from fonctions.def_t import (
+from utils.deepinfra_client import make_deepinfra_client
+from utils.utils_qualitatif import (
     creer_odt,
     creer_pdf,
     creer_csv,
@@ -25,7 +21,7 @@ from fonctions.def_t import (
 )
 
 
-from fonctions.def_h import (
+from utils.utils_hybride import (
     generer_prompt_llm as generer_prompt_llm_h,
     generate_dataframe_hybride,
     parse_llm_spec_robuste,
@@ -34,9 +30,7 @@ from fonctions.def_h import (
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 
-
-# Quanti
-from fonctions.def_n import (
+from utils.ulits_quantitatif import (
     saisir_colonnes,
     generer_prompt_llm,
     call_llm,
@@ -92,7 +86,7 @@ def _print_df_summary(df):
 def cli(ctx):
     """Synthetic Data Tool — CLI menu (textuel / quanti / hybride)."""
     if ctx.invoked_subcommand is None:
-        # Par défaut : menu interactif
+        
         ctx.invoke(menu)
 
 
@@ -118,7 +112,7 @@ def menu():
 
 @cli.command("text")
 def cmd_text():
-    """Mode textuel (équivalent text_data.py)."""
+    """Mode textuel """
     run_text()
 
 
@@ -130,13 +124,13 @@ def cmd_quali():
 
 @cli.command("quanti")
 def cmd_quanti():
-    """Mode quantitatif (équivalent numb_data.py)."""
+    """Mode quantitatif """
     run_quanti()
 
 
 @cli.command("hybride")
 def cmd_hybride():
-    """Mode hybride (équivalent hybrise.py)."""
+    """Mode hybride"""
     run_hybride()
 
 
@@ -200,15 +194,20 @@ def run_quanti():
 
 def run_hybride():
     theme = click.prompt("Entrer le thème général du dataset (le titre)", type=str).strip()
+    
+    click.echo("\n Contexte dU dataset :")
+   
+    contexte = click.prompt("Contexte du dataset (optionnel, appuie sur Entrée pour ignorer)", 
+                           type=str, 
+                           default="").strip()
+    
     nb_lignes = _ask_positive_int("Entrer le nombre de lignes")
-
     colonnes = saisir_colonnes()
-
-
     formats = choisir_formats_n()
 
     click.echo("\n=== Génération du schéma JSON via LLM ===")
-    prompt = generer_prompt_llm_h(theme, colonnes, nb_lignes)
+    
+    prompt = generer_prompt_llm_h(theme, colonnes, nb_lignes, contexte=contexte)
     raw = call_llm(prompt)
 
     spec_llm = parse_llm_spec_robuste(raw)
@@ -218,10 +217,10 @@ def run_hybride():
         click.echo(str(raw))
         raise SystemExit(1)
 
-    click.echo("Schéma reçu :")
+    click.echo(" Schéma reçu :")
     click.echo(json.dumps(spec_llm, ensure_ascii=False, indent=2))
 
-    df = generate_dataframe_hybride(spec_llm, nb_lignes, theme=theme, seed=42)
+    df = generate_dataframe_hybride(spec_llm, nb_lignes, theme=theme, contexte=contexte, seed=42)
     _print_df_summary(df)
 
     pdf_dir, odt_dir, csv_dir = creer_dossiers_sortie("output_pdf", "output_odt", "output_csv")
@@ -253,7 +252,6 @@ def run_hybride():
         click.echo("CSV : ignoré")
 
     click.echo("\n Génération terminée !")
-
 
 def run_text():
     sujet_utilisateur = click.prompt("Entrez le sujet des articles", type=str).strip()
@@ -288,3 +286,18 @@ def run_text():
 
 if __name__ == "__main__":
     cli()
+
+    """
+    Exemple d'utilisation: 
+
+Titre: Catalogue Musical Spotify
+Contexte: Morceaux de musique avec informations sur les artistes, popularité, streams et dates de sortie. Les genres varient du pop au rock en passant par le rap et l'électro.
+Colonne: 
+>  titre
+>  artiste
+>  genre
+>  duree_secondes
+>  nb_ecoutes
+>  nb_prix
+>  description
+    """

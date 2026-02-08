@@ -1,10 +1,12 @@
-import random
-import re
-import os
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import polars as pl
-from tqdm import tqdm
+import random 
+import re     
+import os      
+from concurrent.futures import ThreadPoolExecutor, as_completed  
+
+import polars as pl 
+from tqdm import tqdm  
+
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -14,12 +16,16 @@ from reportlab.lib.enums import TA_JUSTIFY
 
 from odf.opendocument import OpenDocumentText
 from odf.text import P
-from odf.style import Style, TextProperties, ParagraphProperties
+from odf.style import Style, TextProperties, ParagraphProperties 
 
-from .deepinfra_client import make_deepinfra_client
+from .deepinfra_client import make_deepinfra_client  
 
 
 def creer_pdf(texte: str, nom_fichier: str):
+    """
+    Crée un PDF à partir d'un texte brut.
+    """
+
     doc = SimpleDocTemplate(
         nom_fichier,
         pagesize=A4,
@@ -28,6 +34,7 @@ def creer_pdf(texte: str, nom_fichier: str):
         topMargin=2 * cm,
         bottomMargin=2 * cm,
     )
+
 
     styles = getSampleStyleSheet()
 
@@ -39,10 +46,12 @@ def creer_pdf(texte: str, nom_fichier: str):
     )
 
     elements = []
+
     lignes = texte.strip().split("\n")
 
     for ligne in lignes:
         ligne = ligne.strip()
+
         if not ligne:
             elements.append(Spacer(1, 0.3 * cm))
             continue
@@ -61,7 +70,13 @@ def creer_pdf(texte: str, nom_fichier: str):
     doc.build(elements)
     print(f"PDF créé: {nom_fichier}")
 
+
+
 def creer_odt(texte: str, nom_fichier: str):
+    """
+    Crée un fichier ODT à partir d'un texte brut.
+    """
+
     doc = OpenDocumentText()
 
     style_h1 = Style(name="Titre1", family="paragraph")
@@ -76,6 +91,7 @@ def creer_odt(texte: str, nom_fichier: str):
 
     for ligne in lignes:
         ligne = ligne.strip()
+
         if not ligne:
             doc.text.addElement(P(text=""))
             continue
@@ -90,43 +106,55 @@ def creer_odt(texte: str, nom_fichier: str):
     doc.save(nom_fichier)
     print(f"ODT créé: {nom_fichier}")
 
+
 def creer_csv(texte: str, nom_fichier: str):
     """
     Crée un fichier CSV contenant le texte.
-    Format: une colonne 'contenu' avec le texte complet.
     """
+
     dossier = os.path.dirname(nom_fichier)
     if dossier:
         os.makedirs(dossier, exist_ok=True)
-    
-    # Échapper les guillemets et remplacer les sauts de ligne
+
     texte_clean = texte.replace('"', '""').replace('\n', ' ')
-    
+
     with open(nom_fichier, 'w', encoding='utf-8-sig') as f:
         f.write("contenu\n")
         f.write(f'"{texte_clean}"\n')
-    
+
     print(f"CSV créé: {nom_fichier}")
 
+
 def write_files(args):
-    """Version mise à jour qui accepte les formats choisis"""
+    """
+    Version qui accepte les formats choisis.
+    """
     texte_llm, index, formats = args
-    
+
     if formats['pdf']:
         nom_pdf = f"output_pdf/article_{index+1}.pdf"
         creer_pdf(texte_llm, nom_pdf)
-    
+
     if formats['odt']:
         nom_odt = f"output_odt/article_{index+1}.odt"
         creer_odt(texte_llm, nom_odt)
-    
+
     if formats['csv']:
         nom_csv = f"output_csv/article_{index+1}.csv"
         creer_csv(texte_llm, nom_csv)
-    
+
     return index
 
+
+# ============================================================
+# Inference LLM 
+# ============================================================
+
 def inference(client, sujet):
+    """
+    Appelle le modèle LLM pour générer un texte sur un sujet donné.
+    """
+
     prompt = (
         "Crée un texte de plusieurs paragraphes sur le thème de la technologie "
         "et de l'innovation en 2024, parle de ce sujet spécifique : "
@@ -140,31 +168,36 @@ def inference(client, sujet):
         messages=[{"role": "user", "content": prompt}],
     )
 
+   
     return response.choices[0].message.content
+
+
+# ============================================================
+# Choix formats 
+# ============================================================
 
 def choisir_formats() -> dict[str, bool]:
     """
     Demande à l'utilisateur quels formats il souhaite générer.
-    Retourne un dict avec les clés 'pdf', 'odt', 'csv' et valeurs True/False.
     """
+
     print("\n=== Choix des formats de sortie ===")
     print("Quels formats voulez-vous générer ?")
     print("(Répondez par 'o' pour oui, 'n' pour non, ou appuyez sur Entrée pour tout générer)")
-    
+
     formats = {}
-    
+
     reponse_pdf = input("  PDF ? [o/N] : ").strip().lower()
     formats['pdf'] = reponse_pdf == 'o'
-    
+
     reponse_odt = input("  ODT ? [o/N] : ").strip().lower()
     formats['odt'] = reponse_odt == 'o'
-    
+
     reponse_csv = input("  CSV ? [o/N] : ").strip().lower()
     formats['csv'] = reponse_csv == 'o'
-    
-    # Si aucun format n'est choisi, générer tout par défaut
+
     if not any(formats.values()):
         print("\nAucun format sélectionné. Génération de tous les formats par défaut.")
         formats = {'pdf': True, 'odt': True, 'csv': True}
-    
+
     return formats

@@ -1,5 +1,5 @@
 import json
-from fonctions.def_n import (
+from utils.ulits_quantitatif import (
     saisir_colonnes,
     generer_prompt_llm,
     call_llm,
@@ -12,7 +12,6 @@ from fonctions.def_n import (
     choisir_formats,
 )
 
-# === Programme principal ===
 
 theme = input("Entrer le thème général du dataset (le titre) : ").strip()
 nb_lignes = int(input("Entrer le nombre de lignes : ").strip())
