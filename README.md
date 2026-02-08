@@ -84,3 +84,32 @@ Le tout est accessible via une **CLI** interactive.
 - `odfpy` (ODT)
 - `python-dotenv` (gestion des clés API)
 
+---
+
+## Points d’amélioration et limites actuelles
+
+Ce projet est un **prototype fonctionnel**, mais plusieurs améliorations sont possibles :
+
+### Gestion des dates 
+
+### Robustesse du parsing JSON LLM
+
+### CLI plus complète
+
+### Tests automatisés
+
+
+### Mise en page des PDF (pour deslignes de texte très longues, le texte peut se superposer ou dépasser les zones prévues)
+
+---
+
+## Remerciements
+
+Ce projet a été réalisé durant mon **stage chez Arlequin AI**.
+
+Un grand merci à **Hadrien** et **Léna** pour leur accompagnement, leur disponibilité et leurs conseils tout au long du stage, malgré leur charge de travail.
+
+Merci également à **toutes les personnes** qui ont pris le temps de répondre à mes questions, de relire, d’expliquer et de m’aider à progresser techniquement.  
+Ce projet m’a permis de mieux comprendre la dynamique de travail en équipe, de structurer un projet Python plus proprement, et de gagner en rigueur (Git, organisation, modularité).
+
+
